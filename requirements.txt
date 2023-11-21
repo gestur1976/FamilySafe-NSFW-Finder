@@ -6,6 +6,7 @@ tf-gpu
 keras
 protobuf
 tensorflow==2.8.0
+tensorrt
 tensorboard
 tensorflow-estimator
 chardet

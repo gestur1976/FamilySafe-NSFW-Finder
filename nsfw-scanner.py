@@ -4,7 +4,7 @@ from PIL import Image
 from transformers import pipeline
 import sys
 import os
-import time
+import shutil
 
 def parse_args() -> tuple[str, bool, Optional[str]]:
     parser = argparse.ArgumentParser(description='Scans a file tree for NSFW files')
@@ -52,7 +52,9 @@ def scan_directory(classifier: pipeline, directory: str, recursive: bool, target
             elif nsfw >= 0.15 and nsfw < 0.5:
                 if target:
                     target_path = os.path.join(target, file)
+                    # We move the file to the target path
                     os.rename(image_path, target_path)
+
                     print (f"{image_path} very likely has NSFW content " + str(nsfw) + " vs " + str(normal) + ". Moved to " + target_path + ".")
                 else:
                     print (f"{image_path} very likely has NSFW content " + str(nsfw) + " vs " + str(normal) + ".")
