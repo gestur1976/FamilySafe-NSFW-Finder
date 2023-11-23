@@ -57,9 +57,12 @@ python nsfw-scanner.py [directory] [options]
 ## Example
 ```bash
 python nsfw-scanner.py ~/Images --recursive --target ~/.nsfw_images
+or
+# to disable NUMA warnings if you get them prepend the following env VAR to your command
+TF_CPP_MIN_LOG_LEVEL=3 python nsfw-scanner.py ~/Images --recursive --target ~/.nsfw_images
 ```
 
-## Note
+## Notes
 
 - NSFW detection accuracy depends on the model.
 - Internet access is required to download the model on first run.

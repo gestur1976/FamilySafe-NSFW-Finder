@@ -4,6 +4,8 @@ import sys
 from typing import Optional, Tuple
 from PIL import Image
 from transformers import pipeline
+from tensorflow as tf
+
 
 def parse_arguments() -> Tuple[str, bool, Optional[str]]:
     parser = argparse.ArgumentParser(description='Scans a directory for NSFW files')
@@ -62,7 +64,7 @@ def analyze_and_move(image_path: str, nsfw_score: float, normal_score: float, ta
 def move_file(source: str, destination: Optional[str], message: str) -> None:
     if destination:
         os.rename(source, destination)
-        print(message)
+        print(message)                                                                      
     else:
         print(f"{source} {message}")
 
@@ -75,6 +77,8 @@ if not os.path.exists(directory):
 if target and not os.path.exists(target):
     print(f'Target directory does not exist: {target}', file=sys.stderr)
     sys.exit(1)
-
+gpu_devices = tf.config.experimental.list_physical_devices("GPU")
+for device in gpu_devices:
+    tf.config.experimental.set_memory_growth(device, True)
 classifier = pipeline('image-classification', model='Falconsai/nsfw_image_detection')
 scan_directory(classifier, directory, recursive, target)
