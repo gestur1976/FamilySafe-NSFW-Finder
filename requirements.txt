@@ -4,6 +4,6 @@ transformers
 pillow
 keras
 protobuf
-tensorflow==2.8.0
+tensorflow
 chardet
 numpy
