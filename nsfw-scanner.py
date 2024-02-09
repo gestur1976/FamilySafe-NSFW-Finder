@@ -4,7 +4,7 @@ import sys
 from typing import Optional, Tuple
 from PIL import Image
 from transformers import pipeline
-from tensorflow as tf
+import tensorflow as tf
 
 
 def parse_arguments() -> Tuple[str, bool, Optional[str]]:
