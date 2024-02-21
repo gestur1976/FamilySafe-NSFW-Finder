@@ -6,7 +6,10 @@ from PIL import Image
 from transformers import pipeline
 import tensorflow as tf
 
-
+files_count = 0
+nsfw_count = 0
+normal_count = 0
+suspect_count = 0
 def parse_arguments() -> Tuple[str, bool, Optional[str]]:
     parser = argparse.ArgumentParser(description='Scans a directory for NSFW files')
     parser.add_argument('directory', type=str, help='Directory to start scanning from')
@@ -35,7 +38,6 @@ def scan_directory(classifier: pipeline, directory: str, recursive: bool, target
             print(f"Checking {image_path}")
             results = classifier(image)
             nsfw_score, normal_score = 0, 0
-
             for result in results:
                 if result['label'] == 'nsfw':
                     nsfw_score = result['score']
@@ -50,15 +52,28 @@ def scan_directory(classifier: pipeline, directory: str, recursive: bool, target
             scan_directory(classifier, os.path.join(directory, subdir), recursive, target_dir)
 
 def analyze_and_move(image_path: str, nsfw_score: float, normal_score: float, target_path: Optional[str]) -> None:
+    global files_count
+    global nsfw_count
+    global normal_count
+    global suspect_count
+
+    files_count += 1
+
     if nsfw_score > 0.5:
+        global nsfw_count
+        nsfw_count += 1
         move_file(image_path, target_path, f"NSFW content detected. Moving to {target_path}.")
     elif nsfw_score >= 0.15:
+        nsfw_count += 1
         move_file(image_path, target_path, f"Likely NSFW content. Moving to {target_path}.")
     elif nsfw_score > 0.05:
+        suspect_count += 1
         print(f"{image_path} may contain NSFW content. Manual review suggested.")
     elif normal_score > 0.9:
+        normal_count += 1
         print(f"{image_path} is classified as safe.")
     else:
+        suspect_count += 1
         print(f"{image_path} is ambiguous. Manual review suggested.")
 
 def move_file(source: str, destination: Optional[str], message: str) -> None:
@@ -77,8 +92,16 @@ if not os.path.exists(directory):
 if target and not os.path.exists(target):
     print(f'Target directory does not exist: {target}', file=sys.stderr)
     sys.exit(1)
+
 gpu_devices = tf.config.experimental.list_physical_devices("GPU")
 for device in gpu_devices:
     tf.config.experimental.set_memory_growth(device, True)
 classifier = pipeline('image-classification', model='Falconsai/nsfw_image_detection')
 scan_directory(classifier, directory, recursive, target)
+# Show statistics
+print("Scan results:")
+print("============================")
+print(f"Number of files scanned: {files_count}")
+print(f"Number of NSFW files found: {nsfw_count}")
+printf(f"Number of suspect files found: {suspect_count}")
+print(f"Number of normal files found: {normal_count}")

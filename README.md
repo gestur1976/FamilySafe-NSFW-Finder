@@ -5,7 +5,7 @@ This script scans a directory for images and uses a classifier model to detect N
 
 ## Features
 - Scans specified directories for image files (JPG, JPEG, PNG, GIF).
-- Uses a machine learning model to classify images as NSFW or safe.
+- Uses [Falconsai/nsfw_image_detection](https://huggingface.co/Falconsai/nsfw_image_detection) model to classify images as NSFW or safe.
 - Can move detected NSFW images to a chosen directory.
 - Option for recursive directory scanning.
 
