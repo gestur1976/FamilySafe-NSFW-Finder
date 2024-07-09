@@ -5,103 +5,146 @@ from typing import Optional, Tuple
 from PIL import Image
 from transformers import pipeline
 import tensorflow as tf
+import cv2
 
-files_count = 0
-nsfw_count = 0
-normal_count = 0
-suspect_count = 0
-def parse_arguments() -> Tuple[str, bool, Optional[str]]:
-    parser = argparse.ArgumentParser(description='Scans a directory for NSFW files')
-    parser.add_argument('directory', type=str, help='Directory to start scanning from')
-    parser.add_argument('-r', '--recursive', action='store_true', help='Recursively scan subdirectories')
-    parser.add_argument('-t', '--target', type=str, default=None, help='Target directory for NSFW files')
+class NSFWScanner:
+    def __init__(self):
+        self.files_count = 0
+        self.nsfw_count = 0
+        self.normal_count = 0
+        self.suspect_count = 0
+        self.image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp')
+        self.video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.mpeg', '.mpg', '.m4v')
 
-    args = parser.parse_args()
-    return args.directory, args.recursive, args.target
+    def parse_arguments(self) -> Tuple[str, bool, Optional[str]]:
+        parser = argparse.ArgumentParser(description='Scans a directory for NSFW files')
+        parser.add_argument('directory', type=str, help='Directory to start scanning from')
+        parser.add_argument('-r', '--recursive', action='store_true', help='Recursively scan subdirectories')
+        parser.add_argument('-t', '--target', type=str, default=None, help='Target directory for NSFW files')
 
-def scan_directory(classifier: pipeline, directory: str, recursive: bool, target_dir: Optional[str]) -> None:
-    if target_dir and not os.path.exists(target_dir):
-        return
+        args = parser.parse_args()
+        return args.directory, args.recursive, args.target
 
-    print(f"Scanning directory: {directory}")
-    files = os.listdir(directory)
+    def scan_directory(self, classifier, directory: str, recursive: bool, target_dir: Optional[str]) -> None:
+        if target_dir and not os.path.exists(target_dir):
+            return
 
-    for file in files:
-        if file.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-            image_path = os.path.join(directory, file)
-            try:
-                image = Image.open(image_path)
-            except OSError:
-                print(f'Error opening image: {image_path}', file=sys.stderr)
-                continue
+        print(f"Scanning directory: {directory}")
+        items = os.listdir(directory)
 
-            print(f"Checking {image_path}")
-            results = classifier(image)
-            nsfw_score, normal_score = 0, 0
-            for result in results:
-                if result['label'] == 'nsfw':
-                    nsfw_score = result['score']
-                if result['label'] == 'normal':
-                    normal_score = result['score']
+        for item in items:
+            item_path = os.path.join(directory, item)
+            if os.path.isfile(item_path):
+                if item.lower().endswith(self.image_extensions):
+                    self.process_image_file(classifier, item_path, target_dir)
+                elif item.lower().endswith(self.video_extensions):
+                    self.process_video_file(classifier, item_path, target_dir)
+            elif recursive and os.path.isdir(item_path):
+                self.scan_directory(classifier, item_path, recursive, target_dir)
 
-            target_path = os.path.join(target_dir, file) if target_dir else None
-            analyze_and_move(image_path, nsfw_score, normal_score, target_path)
+    def process_image_file(self, classifier, image_path: str, target_dir: Optional[str]) -> None:
+        try:
+            image = Image.open(image_path)
+        except (OSError, Exception) as e:
+            print(f'Error opening image: {image_path} - {e}', file=sys.stderr)
+            return
 
-    if recursive:
-        for subdir in [d for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))]:
-            scan_directory(classifier, os.path.join(directory, subdir), recursive, target_dir)
+        print(f"Checking {image_path}")
+        results = classifier(image)
+        nsfw_score, normal_score = 0, 0
+        for result in results:
+            if result['label'] == 'nsfw':
+                nsfw_score = result['score']
+            if result['label'] == 'normal':
+                normal_score = result['score']
 
-def analyze_and_move(image_path: str, nsfw_score: float, normal_score: float, target_path: Optional[str]) -> None:
-    global files_count
-    global nsfw_count
-    global normal_count
-    global suspect_count
+        target_path = os.path.join(target_dir, os.path.basename(image_path)) if target_dir else None
+        self.analyze_and_move(image_path, nsfw_score, normal_score, target_path)
 
-    files_count += 1
+    def process_video_file(self, classifier, video_path: str, target_dir: Optional[str]) -> None:
+        try:
+            cap = cv2.VideoCapture(video_path)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            frame_interval = max(1, frame_count // 10)  # Analyze 10 frames equally spaced
+            frames_to_analyze = [i * frame_interval for i in range(10)]
 
-    if nsfw_score > 0.5:
-        global nsfw_count
-        nsfw_count += 1
-        move_file(image_path, target_path, f"NSFW content detected. Moving to {target_path}.")
-    elif nsfw_score >= 0.15:
-        nsfw_count += 1
-        move_file(image_path, target_path, f"Likely NSFW content. Moving to {target_path}.")
-    elif nsfw_score > 0.05:
-        suspect_count += 1
-        print(f"{image_path} may contain NSFW content. Manual review suggested.")
-    elif normal_score > 0.9:
-        normal_count += 1
-        print(f"{image_path} is classified as safe.")
-    else:
-        suspect_count += 1
-        print(f"{image_path} is ambiguous. Manual review suggested.")
+            nsfw_scores = []
+            normal_scores = []
 
-def move_file(source: str, destination: Optional[str], message: str) -> None:
-    if destination:
-        os.rename(source, destination)
-        print(message)                                                                      
-    else:
-        print(f"{source} {message}")
+            for frame_no in frames_to_analyze:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_no)
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                image = Image.fromarray(frame)
+                results = classifier(image)
+                for result in results:
+                    if result['label'] == 'nsfw':
+                        nsfw_scores.append(result['score'])
+                    if result['label'] == 'normal':
+                        normal_scores.append(result['score'])
 
-directory, recursive, target = parse_arguments()
+            cap.release()
 
-if not os.path.exists(directory):
-    print(f'Source directory does not exist: {directory}', file=sys.stderr)
-    sys.exit(1)
+            avg_nsfw_score = sum(nsfw_scores) / len(nsfw_scores) if nsfw_scores else 0
+            avg_normal_score = sum(normal_scores) / len(normal_scores) if normal_scores else 0
 
-if target and not os.path.exists(target):
-    print(f'Target directory does not exist: {target}', file=sys.stderr)
-    sys.exit(1)
+            target_path = os.path.join(target_dir, os.path.basename(video_path)) if target_dir else None
+            self.analyze_and_move(video_path, avg_nsfw_score, avg_normal_score, target_path)
+        except (cv2.error, Exception) as e:
+            print(f'Error processing video: {video_path} - {e}', file=sys.stderr)
+            return
 
-gpu_devices = tf.config.experimental.list_physical_devices("GPU")
-for device in gpu_devices:
-    tf.config.experimental.set_memory_growth(device, True)
-classifier = pipeline('image-classification', model='Falconsai/nsfw_image_detection')
-scan_directory(classifier, directory, recursive, target)
-# Show statistics
-print("Scan results:")
-print("============================")
-print(f"Number of files scanned: {files_count}")
-print(f"Number of NSFW files found: {nsfw_count}")
-print(f"Number of suspect files found: {suspect_count}")
-print(f"Number of normal files found: {normal_count}")
+    def analyze_and_move(self, file_path: str, nsfw_score: float, normal_score: float, target_path: Optional[str]) -> None:
+        self.files_count += 1
+
+        if nsfw_score > 0.5:
+            self.nsfw_count += 1
+            self.move_file(file_path, target_path, f"NSFW content detected. Moving to {target_path}.")
+        elif nsfw_score >= 0.15:
+            self.nsfw_count += 1
+            self.move_file(file_path, target_path, f"Likely NSFW content. Moving to {target_path}.")
+        elif nsfw_score > 0.05:
+            self.suspect_count += 1
+            print(f"{file_path} may contain NSFW content. Manual review suggested.")
+        elif normal_score > 0.9:
+            self.normal_count += 1
+            print(f"{file_path} is classified as safe.")
+        else:
+            self.suspect_count += 1
+            print(f"{file_path} is ambiguous. Manual review suggested.")
+
+    def move_file(self, source: str, destination: Optional[str], message: str) -> None:
+        if destination:
+            os.rename(source, destination)
+            print(message)
+        else:
+            print(f"{source} {message}")
+
+if __name__ == "__main__":
+    scanner = NSFWScanner()
+    directory, recursive, target = scanner.parse_arguments()
+
+    if not os.path.exists(directory):
+        print(f'Source directory does not exist: {directory}', file=sys.stderr)
+        sys.exit(1)
+
+    if target and not os.path.exists(target):
+        print(f'Target directory does not exist: {target}', file=sys.stderr)
+        sys.exit(1)
+
+    gpu_devices = tf.config.experimental.list_physical_devices("GPU")
+    for device in gpu_devices:
+        tf.config.experimental.set_memory_growth(device, True)
+
+    classifier = pipeline('image-classification', model='Falconsai/nsfw_image_detection')
+    scanner.scan_directory(classifier, directory, recursive, target)
+
+    # Show statistics
+    print("Scan results:")
+    print("============================")
+    print(f"Number of files scanned: {scanner.files_count}")
+    print(f"Number of NSFW files found: {scanner.nsfw_count}")
+    print(f"Number of suspect files found: {scanner.suspect_count}")
+    print(f"Number of normal files found: {scanner.normal_count}")
