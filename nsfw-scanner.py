@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 from PIL import Image
 from transformers import pipeline
 import tensorflow as tf
+import cv2
 
 class NSFWScanner:
     def __init__(self):
@@ -12,6 +13,8 @@ class NSFWScanner:
         self.nsfw_count = 0
         self.normal_count = 0
         self.suspect_count = 0
+        self.image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp')
+        self.video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.mpeg', '.mpg', '.m4v')
 
     def parse_arguments(self) -> Tuple[str, bool, Optional[str]]:
         parser = argparse.ArgumentParser(description='Scans a directory for NSFW files')
@@ -31,12 +34,15 @@ class NSFWScanner:
 
         for item in items:
             item_path = os.path.join(directory, item)
-            if os.path.isfile(item_path) and item.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                self.process_file(classifier, item_path, target_dir)
+            if os.path.isfile(item_path):
+                if item.lower().endswith(self.image_extensions):
+                    self.process_image_file(classifier, item_path, target_dir)
+                elif item.lower().endswith(self.video_extensions):
+                    self.process_video_file(classifier, item_path, target_dir)
             elif recursive and os.path.isdir(item_path):
                 self.scan_directory(classifier, item_path, recursive, target_dir)
 
-    def process_file(self, classifier, image_path: str, target_dir: Optional[str]) -> None:
+    def process_image_file(self, classifier, image_path: str, target_dir: Optional[str]) -> None:
         try:
             image = Image.open(image_path)
         except (OSError, Exception) as e:
@@ -55,24 +61,59 @@ class NSFWScanner:
         target_path = os.path.join(target_dir, os.path.basename(image_path)) if target_dir else None
         self.analyze_and_move(image_path, nsfw_score, normal_score, target_path)
 
-    def analyze_and_move(self, image_path: str, nsfw_score: float, normal_score: float, target_path: Optional[str]) -> None:
+    def process_video_file(self, classifier, video_path: str, target_dir: Optional[str]) -> None:
+        try:
+            cap = cv2.VideoCapture(video_path)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            frame_interval = max(1, frame_count // 10)  # Analyze 10 frames equally spaced
+            frames_to_analyze = [i * frame_interval for i in range(10)]
+
+            nsfw_scores = []
+            normal_scores = []
+
+            for frame_no in frames_to_analyze:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_no)
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                image = Image.fromarray(frame)
+                results = classifier(image)
+                for result in results:
+                    if result['label'] == 'nsfw':
+                        nsfw_scores.append(result['score'])
+                    if result['label'] == 'normal':
+                        normal_scores.append(result['score'])
+
+            cap.release()
+
+            avg_nsfw_score = sum(nsfw_scores) / len(nsfw_scores) if nsfw_scores else 0
+            avg_normal_score = sum(normal_scores) / len(normal_scores) if normal_scores else 0
+
+            target_path = os.path.join(target_dir, os.path.basename(video_path)) if target_dir else None
+            self.analyze_and_move(video_path, avg_nsfw_score, avg_normal_score, target_path)
+        except (cv2.error, Exception) as e:
+            print(f'Error processing video: {video_path} - {e}', file=sys.stderr)
+            return
+
+    def analyze_and_move(self, file_path: str, nsfw_score: float, normal_score: float, target_path: Optional[str]) -> None:
         self.files_count += 1
 
         if nsfw_score > 0.5:
             self.nsfw_count += 1
-            self.move_file(image_path, target_path, f"NSFW content detected. Moving to {target_path}.")
+            self.move_file(file_path, target_path, f"NSFW content detected. Moving to {target_path}.")
         elif nsfw_score >= 0.15:
             self.nsfw_count += 1
-            self.move_file(image_path, target_path, f"Likely NSFW content. Moving to {target_path}.")
+            self.move_file(file_path, target_path, f"Likely NSFW content. Moving to {target_path}.")
         elif nsfw_score > 0.05:
             self.suspect_count += 1
-            print(f"{image_path} may contain NSFW content. Manual review suggested.")
+            print(f"{file_path} may contain NSFW content. Manual review suggested.")
         elif normal_score > 0.9:
             self.normal_count += 1
-            print(f"{image_path} is classified as safe.")
+            print(f"{file_path} is classified as safe.")
         else:
             self.suspect_count += 1
-            print(f"{image_path} is ambiguous. Manual review suggested.")
+            print(f"{file_path} is ambiguous. Manual review suggested.")
 
     def move_file(self, source: str, destination: Optional[str], message: str) -> None:
         if destination:
@@ -96,7 +137,7 @@ if __name__ == "__main__":
     gpu_devices = tf.config.experimental.list_physical_devices("GPU")
     for device in gpu_devices:
         tf.config.experimental.set_memory_growth(device, True)
-    
+
     classifier = pipeline('image-classification', model='Falconsai/nsfw_image_detection')
     scanner.scan_directory(classifier, directory, recursive, target)
 
