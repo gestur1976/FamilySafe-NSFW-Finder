@@ -7,3 +7,4 @@ protobuf
 tensorflow
 chardet
 numpy
+opencv-python
