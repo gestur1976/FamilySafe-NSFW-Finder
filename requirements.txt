@@ -2,9 +2,10 @@ argparse
 typing
 transformers
 pillow
-keras
+tf-keras
 protobuf
 tensorflow
 chardet
 numpy
 opencv-python
+torch

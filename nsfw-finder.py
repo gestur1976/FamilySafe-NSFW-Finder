@@ -3,11 +3,23 @@ import os
 import sys
 from typing import Optional, Tuple
 from PIL import Image
-from transformers import pipeline
+import torch
+from transformers import AutoModelForImageClassification, ViTImageProcessor
 import tensorflow as tf
 import cv2
 
-class NSFWScanner:
+
+def parse_arguments() -> Tuple[str, bool, Optional[str]]:
+    parser = argparse.ArgumentParser(description='Scans a directory for NSFW files')
+    parser.add_argument('directory', type=str, help='Directory to start scanning from')
+    parser.add_argument('-r', '--recursive', action='store_true', help='Recursively scan subdirectories')
+    parser.add_argument('-t', '--target', type=str, default=None, help='Target directory for NSFW files')
+
+    args = parser.parse_args()
+    return args.directory, args.recursive, args.target
+
+
+class NSFWFinder:
     def __init__(self):
         self.files_count = 0
         self.nsfw_count = 0
@@ -15,15 +27,6 @@ class NSFWScanner:
         self.suspect_count = 0
         self.image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp')
         self.video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.mpeg', '.mpg', '.m4v')
-
-    def parse_arguments(self) -> Tuple[str, bool, Optional[str]]:
-        parser = argparse.ArgumentParser(description='Scans a directory for NSFW files')
-        parser.add_argument('directory', type=str, help='Directory to start scanning from')
-        parser.add_argument('-r', '--recursive', action='store_true', help='Recursively scan subdirectories')
-        parser.add_argument('-t', '--target', type=str, default=None, help='Target directory for NSFW files')
-
-        args = parser.parse_args()
-        return args.directory, args.recursive, args.target
 
     def scan_directory(self, classifier, directory: str, recursive: bool, target_dir: Optional[str]) -> None:
         if target_dir and not os.path.exists(target_dir):
@@ -50,7 +53,11 @@ class NSFWScanner:
             return
 
         print(f"Checking {image_path}")
-        results = classifier(image)
+
+        inputs = classifier(image=image, return_tensors="pt").to(device)
+        with torch.no_grad():
+            results = model(**inputs)
+
         nsfw_score, normal_score = 0, 0
         for result in results:
             if result['label'] == 'nsfw':
@@ -96,7 +103,8 @@ class NSFWScanner:
             print(f'Error processing video: {video_path} - {e}', file=sys.stderr)
             return
 
-    def analyze_and_move(self, file_path: str, nsfw_score: float, normal_score: float, target_path: Optional[str]) -> None:
+    def analyze_and_move(self, file_path: str, nsfw_score: float, normal_score: float,
+                         target_path: Optional[str]) -> None:
         self.files_count += 1
 
         if nsfw_score > 0.5:
@@ -115,16 +123,18 @@ class NSFWScanner:
             self.suspect_count += 1
             print(f"{file_path} is ambiguous. Manual review suggested.")
 
-    def move_file(self, source: str, destination: Optional[str], message: str) -> None:
+    @staticmethod
+    def move_file(source: str, destination: Optional[str], message: str) -> None:
         if destination:
             os.rename(source, destination)
             print(message)
         else:
             print(f"{source} {message}")
 
+
 if __name__ == "__main__":
-    scanner = NSFWScanner()
-    directory, recursive, target = scanner.parse_arguments()
+    finder = NSFWFinder()
+    directory, recursive, target = parse_arguments()
 
     if not os.path.exists(directory):
         print(f'Source directory does not exist: {directory}', file=sys.stderr)
@@ -138,13 +148,19 @@ if __name__ == "__main__":
     for device in gpu_devices:
         tf.config.experimental.set_memory_growth(device, True)
 
-    classifier = pipeline('image-classification', model='Falconsai/nsfw_image_detection')
-    scanner.scan_directory(classifier, directory, recursive, target)
+    model = AutoModelForImageClassification.from_pretrained("Falconsai/nsfw_image_detection")
+    classifier = ViTImageProcessor.from_pretrained('Falconsai/nsfw_image_detection')
+    classifier.eval()
+    device = torch.device(
+        'cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu'))
+    classifier.to(device)
+
+    finder.scan_directory(classifier, directory, recursive, target)
 
     # Show statistics
     print("Scan results:")
     print("============================")
-    print(f"Number of files scanned: {scanner.files_count}")
-    print(f"Number of NSFW files found: {scanner.nsfw_count}")
-    print(f"Number of suspect files found: {scanner.suspect_count}")
-    print(f"Number of normal files found: {scanner.normal_count}")
+    print(f"Number of files scanned: {finder.files_count}")
+    print(f"Number of NSFW files found: {finder.nsfw_count}")
+    print(f"Number of suspect files found: {finder.suspect_count}")
+    print(f"Number of normal files found: {finder.normal_count}")
