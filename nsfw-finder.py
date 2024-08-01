@@ -28,7 +28,7 @@ class NSFWFinder:
         self.image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp')
         self.video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.mpeg', '.mpg', '.m4v')
 
-    def scan_directory(self, classifier, directory: str, recursive: bool, target_dir: Optional[str]) -> None:
+    def scan_directory(self, model, classifier, directory: str, recursive: bool, target_dir: Optional[str]) -> None:
         if target_dir and not os.path.exists(target_dir):
             return
 
@@ -39,13 +39,13 @@ class NSFWFinder:
             item_path = os.path.join(directory, item)
             if os.path.isfile(item_path):
                 if item.lower().endswith(self.image_extensions):
-                    self.process_image_file(classifier, item_path, target_dir)
+                    self.process_image_file(model, classifier, item_path, target_dir)
                 elif item.lower().endswith(self.video_extensions):
-                    self.process_video_file(classifier, item_path, target_dir)
+                    self.process_video_file(model, classifier, item_path, target_dir)
             elif recursive and os.path.isdir(item_path):
-                self.scan_directory(classifier, item_path, recursive, target_dir)
+                self.scan_directory(model, classifier, item_path, recursive, target_dir)
 
-    def process_image_file(self, classifier, image_path: str, target_dir: Optional[str]) -> None:
+    def process_image_file(self, model, classifier, image_path: str, target_dir: Optional[str]) -> None:
         try:
             image = Image.open(image_path)
         except (OSError, Exception) as e:
@@ -54,21 +54,27 @@ class NSFWFinder:
 
         print(f"Checking {image_path}")
 
-        inputs = classifier(image=image, return_tensors="pt").to(device)
+        inputs = classifier(images=image, return_tensors="pt").to(device)
         with torch.no_grad():
             results = model(**inputs)
+        log_items = results.logits
+        predicted_label = log_items.argmax(-1).item()
+        model.config.id2label[predicted_label]
+        attrs = vars(results)
+        print(predicted_label)
+        print(', '.join("%s: %s" % item for item in attrs.items()))
 
         nsfw_score, normal_score = 0, 0
-        for result in results:
-            if result['label'] == 'nsfw':
-                nsfw_score = result['score']
-            if result['label'] == 'normal':
-                normal_score = result['score']
+        #for result in results:
+        #    if result['label'] == 'nsfw':
+        #        nsfw_score = result['score']
+        #    if result['label'] == 'normal':
+        #        normal_score = result['score']
 
-        target_path = os.path.join(target_dir, os.path.basename(image_path)) if target_dir else None
-        self.analyze_and_move(image_path, nsfw_score, normal_score, target_path)
+        #target_path = os.path.join(target_dir, os.path.basename(image_path)) if target_dir else None
+        #self.analyze_and_move(image_path, nsfw_score, normal_score, target_path)
 
-    def process_video_file(self, classifier, video_path: str, target_dir: Optional[str]) -> None:
+    def process_video_file(self, model, classifier, video_path: str, target_dir: Optional[str]) -> None:
         try:
             cap = cv2.VideoCapture(video_path)
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -85,6 +91,9 @@ class NSFWFinder:
                     continue
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 image = Image.fromarray(frame)
+                inputs = classifier(image=image, return_tensors="pt").to(device)
+                with torch.no_grad():
+                    results = model(**inputs)
                 results = classifier(image)
                 for result in results:
                     if result['label'] == 'nsfw':
@@ -150,12 +159,12 @@ if __name__ == "__main__":
 
     model = AutoModelForImageClassification.from_pretrained("Falconsai/nsfw_image_detection")
     classifier = ViTImageProcessor.from_pretrained('Falconsai/nsfw_image_detection')
-    classifier.eval()
+    model.eval()
     device = torch.device(
         'cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu'))
-    classifier.to(device)
+    model.to(device)
 
-    finder.scan_directory(classifier, directory, recursive, target)
+    finder.scan_directory(model, classifier, directory, recursive, target)
 
     # Show statistics
     print("Scan results:")
