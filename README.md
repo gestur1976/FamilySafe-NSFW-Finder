@@ -53,10 +53,51 @@ python nsfw-finder.py [directory] [options]
 ## Example
 ```bash
 python nsfw-finder.py ~/Media --recursive --target ~/.nsfw_media
-or
-# to disable NUMA warnings if you get them prepend the following env VAR to your command
-TF_CPP_MIN_LOG_LEVEL=3 python nsfw-finder.py ~/Images --recursive --target ~/.nsfw_images
 ```
+## If you get NUMA errors/warnings with NVIDIA GPUs try the following before running the finder:
+
+### 1. Check Nodes
+```bash
+lspci | grep -i nvidia
+  
+01:00.0 VGA compatible controller: NVIDIA Corporation TU106 [GeForce RTX 2060 12GB] (rev a1)
+01:00.1 Audio device: NVIDIA Corporation TU106 High Definition Audio Controller (rev a1)
+```
+The first line shows the address of the VGA compatible device, NVIDIA Geforce, as **01:00** . Each one will be different, so let's change this part carefully.
+### 2. Check and change NUMA setting values
+If you go to `/sys/bus/pci/devicecs/`, you can see the following list:
+```bash
+ls /sys/bus/pci/devices/
+  
+0000:00:00.0  0000:00:06.0  0000:00:15.0  0000:00:1c.0  0000:00:1f.3  0000:00:1f.6  0000:02:00.0
+0000:00:01.0  0000:00:14.0  0000:00:16.0  0000:00:1d.0  0000:00:1f.4  0000:01:00.0
+0000:00:02.0  0000:00:14.2  0000:00:17.0  0000:00:1f.0  0000:00:1f.5  0000:01:00.1
+```
+01:00.0 checked above is visible. However, 0000: is attached in front.
+
+### 3. Check if it is connected.
+```bash
+cat /sys/bus/pci/devices/0000\:01\:00.0/numa_node
+  
+-1
+```
+-1 means no connection, 0 means connected.
+
+### 4. Fix it with the command below.
+```bash
+sudo echo 0 | sudo tee -a /sys/bus/pci/devices/0000\:01\:00.0/numa_node
+  
+0
+```
+It shows 0 which means connected!
+
+### 5. Check again:
+```bash
+cat /sys/bus/pci/devices/0000\:01\:00.0/numa_node
+  
+0
+```
+That's it!
 
 ## Notes
 - NSFW detection accuracy depends on the model.
