@@ -36,7 +36,7 @@ pip install -r requirements.txt
 ```
 
 ## Usage
-Activate the conda environment before using the script. 
+Activate the conda environment before using the script.
 
 Run the script via command line, specifying the source directory and, if desired, a destination folder for detected media files:
 
@@ -46,18 +46,25 @@ python nsfw-finder.py [directory] [options]
 ```
 
 ## Arguments
-- directory: The directory to scan.
-- -r, --recursive: Scan subdirectories recursively.
-- [-t, --target directory]: Optional target directory for NSFW files.
+- `directory`: The directory to scan.
+- `-r`, `--recursive`: Scan subdirectories recursively.
+- `-t`, `--target <directory>`: Optional target directory for NSFW files.
+- `-d`, `--frame_delay <seconds>`: Set the time gap between each frame analyzed from video files (default is 5 seconds). 
+    - A lower value will increase processing speed, but may lead to less accurate results.
+    - Use this option if you want to prioritize speed over accuracy or need faster scans for large volumes of videos. 
+- `-f`, `--frame_frequency <frames>`: Set the frequency at which frames are selected from video files (default is 1 frame every 5 seconds). 
+    - If specified, it overrides any value set by --frame_delay.
+    - A lower frequency will reduce processing time but may decrease accuracy.
 
 ## Example
 ```bash
-python nsfw-finder.py ~/Media --recursive --target ~/.nsfw_media
-or
-# to disable NUMA warnings if you get them prepend the following env VAR to your command
-TF_CPP_MIN_LOG_LEVEL=3 python nsfw-finder.py ~/Images --recursive --target ~/.nsfw_images
+python nsfw-finder.py ~/Media --recursive --target ~/.nsfw_media --frame_delay 2.0
 ```
-
+or with frame frequency option:
+```bash
+# Analyze a video at one frame every second (for faster analysis, albeit slightly less accurate)
+python nsfw-finder.py ~/Videos/ -f 1
+```
 ## Notes
 - NSFW detection accuracy depends on the model.
 - Internet access is required to download the model on first run.
