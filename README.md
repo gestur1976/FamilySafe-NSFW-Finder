@@ -59,10 +59,10 @@ python nsfw-finder.py [directory] [options]
 ```bash
 python nsfw-finder.py ~/Media --recursive --target ~/.nsfw_media --frame_delay 2.0
 ```
-or with frame frequency option:
+or with frame delay option:
 ```bash
-# Analyze a video at one frame every second (for faster analysis, albeit slightly less accurate)
-python nsfw-finder.py ~/Videos/ -f 1
+# Analyze a video at one frame every 10 seconds (for faster analysis, albeit slightly less accurate)
+python nsfw-finder.py ~/Videos/ -d 10
 ```
 ## Notes
 - NSFW detection accuracy depends on the model.
