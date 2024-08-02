@@ -52,9 +52,8 @@ python nsfw-finder.py [directory] [options]
 - `-d`, `--frame_delay <seconds>`: Set the time gap between each frame analyzed from video files (default is 5 seconds). 
     - A lower value will increase processing speed, but may lead to less accurate results.
     - Use this option if you want to prioritize speed over accuracy or need faster scans for large volumes of videos. 
-- `-f`, `--frame_frequency <frames>`: Set the frequency at which frames are selected from video files (default is 1 frame every 5 seconds). 
-    - If specified, it overrides any value set by --frame_delay.
-    - A lower frequency will reduce processing time but may decrease accuracy.
+- `-f`, `--frame_frequency <frames>`: Set the number of frames between each frame analyzed from video files.
+    - A higher value will reduce processing time but may decrease accuracy.
 
 ## Example
 ```bash
