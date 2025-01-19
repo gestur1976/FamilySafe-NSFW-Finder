@@ -19,15 +19,15 @@ This script scans a directory for images and videos, using a classifier model to
 3. Create a Conda environment:
 
 ```bash
-conda create -n nsfw_finder python=3.10 cuda-toolkit cudnn tensorflow
-conda activate nsfw_finder
+conda create -n nsfw_scanner python=3.10 cuda-toolkit cudnn tensorflow
+conda activate nsfw_scanner
 ```
 
 4. Set up the conda environment:
 ```bash
 conda env config vars set LD_LIBRARY_PATH=$CONDA_PREFIX/lib
 conda deactivate
-conda activate nsfw_finder
+conda activate nsfw_scanner
 ```
 
 5. Install required Python packages:
@@ -41,8 +41,8 @@ Activate the conda environment before using the script.
 Run the script via command line, specifying the source directory and, if desired, a destination folder for detected media files:
 
 ```bash
-conda activate nsfw_finder
-python nsfw-finder.py [directory] [options]
+conda activate nsfw_scanner
+python nsfw-scanner.py [directory] [options]
 ```
 
 ## Arguments
@@ -57,12 +57,12 @@ python nsfw-finder.py [directory] [options]
 
 ## Example
 ```bash
-python nsfw-finder.py ~/Media --recursive --target ~/.nsfw_media --frame_delay 2.0
+python nsfw-scanner.py ~/Media --recursive --target ~/.nsfw_media --frame_delay 2.0
 ```
 or with frame delay option:
 ```bash
 # Analyze a video at one frame every 10 seconds (for faster analysis, albeit slightly less accurate)
-python nsfw-finder.py ~/Videos/ -d 10
+python nsfw-scanner.py ~/Videos/ -d 10
 ```
 ## Notes
 - NSFW detection accuracy depends on the model.
